@@ -7,6 +7,7 @@ import Onboarding from './pages/Onboarding';
 import Calendar from './pages/Calendar';
 import Wallet from './pages/Wallet';
 import Vault from './pages/Vault';
+import AcceptInvite from './pages/AcceptInvite';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Route path="/" element={<Navigate to="/signin" replace />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
+          <Route path="/invite/:token" element={<AcceptInvite />} />
           <Route
             path="/dashboard"
             element={
