@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Agreement documents - accessible by both parents
+    match /agreements/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isOwner(userId);
+      allow delete: if false; // Prevent deletion
+    }
+
+    // Expense receipts - accessible by both parents in agreement
+    match /receipts/{agreementId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // User profile photos
+    match /profiles/{userId}/{fileName} {
+      allow read: if true; // Public read
+      allow write: if isSignedIn() && isOwner(userId);
+      allow delete: if isSignedIn() && isOwner(userId);
+    }
+
+    // Medical documents
+    match /medical/{agreementId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+  }
+}
