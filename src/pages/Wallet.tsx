@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Wallet as WalletIcon, Plus, Camera, Receipt, Filter, DollarSign, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import Navigation from '../components/Navigation';
+import BackButton from '../components/BackButton';
 
 interface Expense {
   id: string;
@@ -42,6 +43,9 @@ export default function Wallet() {
       <Navigation />
 
       <main className="container mx-auto px-4 py-8">
+        <div className="mb-6">
+          <BackButton />
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Balance & Controls */}
           <div className="space-y-6">

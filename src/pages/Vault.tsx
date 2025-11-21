@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileText, Search, Home, Clock, AlertCircle, Heart, Phone, Upload } from 'lucide-react';
 import Navigation from '../components/Navigation';
+import BackButton from '../components/BackButton';
 
 interface Asset {
   id: string;
@@ -84,6 +85,9 @@ The marital apartment located in Kfar Saba shall be sold within 18 months of thi
       <Navigation />
 
       <main className="container mx-auto px-4 py-8">
+        <div className="mb-6">
+          <BackButton />
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Sidebar - Quick Access */}
           <div className="space-y-6">

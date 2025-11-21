@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, RefreshCw, Download } from 'lucide-react';
 import Navigation from '../components/Navigation';
+import BackButton from '../components/BackButton';
 import {
   format,
   startOfMonth,
@@ -32,6 +33,7 @@ export default function Calendar() {
   const [view, setView] = useState<'month' | 'week'>('month');
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [showSwapModal, setShowSwapModal] = useState(false);
+  const [showGoogleCalendarModal, setShowGoogleCalendarModal] = useState(false);
 
   // Mock schedule data
   const schedule: DaySchedule[] = generateMockSchedule();
@@ -68,8 +70,18 @@ export default function Calendar() {
 
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-primary-600">Calendar</h2>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            <BackButton />
+            <h2 className="text-2xl font-bold text-primary-600">Calendar</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowGoogleCalendarModal(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-zinc-300 text-zinc-700 rounded-md hover:bg-zinc-50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Sync with Google</span>
+            </button>
               <button
                 onClick={() => setView('month')}
                 className={`px-4 py-2 rounded-md transition-colors ${
@@ -248,6 +260,82 @@ export default function Calendar() {
                 className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
               >
                 Send Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Calendar Sync Modal */}
+      {showGoogleCalendarModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Download className="w-6 h-6 text-primary-600" />
+              <h3 className="text-xl font-semibold text-zinc-800">Sync with Google Calendar</h3>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-zinc-600 mb-4">
+                Keep your custody schedule in sync with Google Calendar. Your schedule will automatically
+                update when changes are made.
+              </p>
+
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
+                  <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-white text-xs">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-800">Two-way sync</p>
+                    <p className="text-xs text-zinc-600">Changes in either calendar will sync automatically</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
+                  <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-white text-xs">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-800">Reminders included</p>
+                    <p className="text-xs text-zinc-600">Get notifications before pickup/dropoff times</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
+                  <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-white text-xs">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-800">Private & secure</p>
+                    <p className="text-xs text-zinc-600">Only you can see your synced events</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-alert-50 border border-alert-200 rounded-lg mb-6">
+              <p className="text-sm text-alert-800">
+                📱 You'll be redirected to Google to authorize calendar access
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowGoogleCalendarModal(false)}
+                className="flex-1 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-md hover:bg-zinc-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  // TODO: Implement Google Calendar OAuth flow
+                  alert('Google Calendar integration coming soon!');
+                  setShowGoogleCalendarModal(false);
+                }}
+                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
+              >
+                Connect Google
               </button>
             </div>
           </div>

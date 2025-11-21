@@ -7,6 +7,7 @@ import Onboarding from './pages/Onboarding';
 import Calendar from './pages/Calendar';
 import Wallet from './pages/Wallet';
 import Vault from './pages/Vault';
+import Settings from './pages/Settings';
 import AcceptInvite from './pages/AcceptInvite';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -56,6 +57,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Vault />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
               </ProtectedRoute>
             }
           />

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, FolderOpen, LogOut } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, FolderOpen, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Navigation() {
@@ -16,6 +16,7 @@ export default function Navigation() {
     { path: '/calendar', label: 'Calendar', icon: Calendar },
     { path: '/wallet', label: 'Wallet', icon: Wallet },
     { path: '/vault', label: 'Vault', icon: FolderOpen },
+    { path: '/settings', label: 'Settings', icon: Settings },
   ];
 
   return (
