@@ -1,36 +1,13 @@
 import { useAuth } from '../hooks/useAuth';
-import { LogOut, Calendar, Wallet, FileText, Users } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Calendar, Wallet, FileText, Users } from 'lucide-react';
+import Navigation from '../components/Navigation';
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/signin');
-  };
+  const { user } = useAuth();
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      {/* Header */}
-      <header className="bg-white border-b border-zinc-200">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-primary-600">CoParent</h1>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-zinc-600">{user?.email}</span>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Navigation />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">

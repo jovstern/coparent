@@ -4,6 +4,9 @@ import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import Dashboard from './pages/Dashboard';
 import Onboarding from './pages/Onboarding';
+import Calendar from './pages/Calendar';
+import Wallet from './pages/Wallet';
+import Vault from './pages/Vault';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -27,6 +30,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <Onboarding />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/calendar"
+            element={
+              <ProtectedRoute>
+                <Calendar />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wallet"
+            element={
+              <ProtectedRoute>
+                <Wallet />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vault"
+            element={
+              <ProtectedRoute>
+                <Vault />
               </ProtectedRoute>
             }
           />
