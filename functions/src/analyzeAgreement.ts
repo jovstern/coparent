@@ -4,8 +4,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as https from 'https';
 import * as http from 'http';
 import { defineSecret } from 'firebase-functions/params';
-import { agreementDataSchema } from '../../schemas';
-import { extractionSchemaGemini } from '../../schemas';
+import { agreementDataSchema, extractionSchemaGemini } from '../../schemas';
+import {
+  agreementAnalyzerSystemPrompt,
+  agreementAnalyzerUserPrompt,
+  agreementAnalyzerConfig
+} from '../../agents';
 
 const db = admin.firestore();
 
@@ -121,35 +125,19 @@ export const analyzeAgreement = functions
 
     // Initialize Gemini model with structured schema
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: agreementAnalyzerConfig.model,
       generationConfig: {
         responseSchema: extractionSchemaGemini as any,
-        responseMimeType: 'application/json',
-        temperature: 0.0, // Deterministic for extraction tasks
+        responseMimeType: agreementAnalyzerConfig.responseMimeType,
+        temperature: agreementAnalyzerConfig.temperature,
       },
     });
-
-    // System prompt for legal document analysis
-    const systemPrompt = `You are a legal document analysis AI specialized in divorce agreements and custody arrangements.
-Extract structured information from the provided document with high precision.
-
-CRITICAL EXTRACTION RULES:
-- Return ONLY a JSON object that strictly conforms to the provided schema
-- Be precise and conservative - if information is unclear or not found, use null rather than guessing
-- All monetary amounts must include their currency (ILS, USD, EUR, etc.)
-- All dates must be in ISO format (YYYY-MM-DD)
-- For expense splits, ensure Parent1 + Parent2 percentages equal 100
-- For percentages, use numbers 0-100 (e.g., 50 for 50%)
-- Support both Hebrew and English text
-- Calculate confidence score (0-100) and list warnings in extractionMetadata`;
-
-    const userPrompt = `Analyze the attached divorce/custody agreement document and extract all structured information according to the schema.`;
 
     // Generate content using inline data (more reliable than Files API)
     console.log('Sending to Gemini API with inline data...');
     const result = await model.generateContent([
       {
-        text: `${systemPrompt}\n\n${userPrompt}`,
+        text: `${agreementAnalyzerSystemPrompt}\n\n${agreementAnalyzerUserPrompt}`,
       },
       {
         inlineData: {
@@ -194,7 +182,7 @@ CRITICAL EXTRACTION RULES:
       originalDocumentUrl: fileUrl,
       analysisMetadata: {
         analyzedAt: admin.firestore.FieldValue.serverTimestamp(),
-        geminiModel: 'gemini-2.5-flash',
+        geminiModel: agreementAnalyzerConfig.model,
         confidenceScore: parsedData.extractionMetadata?.confidenceScore || 70,
         processingTimeMs,
       },

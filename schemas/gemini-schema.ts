@@ -1,3 +1,13 @@
+/**
+ * Gemini Schema Generation
+ *
+ * This file contains the Gemini-compatible JSON schema for agreement extraction.
+ * The schema is manually maintained but should match the Zod schemas in agreement.schema.ts
+ *
+ * NOTE: The Zod schemas in agreement.schema.ts are the source of truth.
+ * If you modify those schemas, please update this file accordingly.
+ */
+
 // Note: SchemaType enum values are defined inline to avoid importing from @google/generative-ai
 // This allows the schema to be used in both frontend and functions without circular dependencies
 
