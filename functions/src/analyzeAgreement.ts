@@ -1,0 +1,534 @@
+import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import * as https from 'https';
+import * as http from 'http';
+import { defineSecret } from 'firebase-functions/params';
+
+const db = admin.firestore();
+
+// Define secret for Gemini API key
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
+
+// Initialize Gemini API (will be done inside function with secret access)
+let genAI: GoogleGenerativeAI;
+
+// TypeScript interfaces for structured output
+interface AgreementData {
+  childSupport: {
+    amount: number | null;
+    currency: string;
+    frequency: 'monthly' | 'weekly' | 'biweekly' | 'annual';
+    isCPILinked: boolean;
+    startDate: string | null;
+    notes: string | null;
+  };
+  expenseSplit: {
+    default: { parent1: number; parent2: number };
+    medical?: { parent1: number; parent2: number };
+    education?: { parent1: number; parent2: number };
+    extracurricular?: { parent1: number; parent2: number };
+    notes: string | null;
+  };
+  custodySchedule: {
+    type: 'weekly' | 'biweekly' | 'custom';
+    cycleDuration: number;
+    parent1Days: string[];
+    parent2Days: string[];
+    description: string;
+    transitionDetails: string | null;
+  };
+  holidays: Array<{
+    name: string;
+    year: number | null;
+    assignedTo: 'parent1' | 'parent2' | 'alternating';
+    notes: string | null;
+  }>;
+  children: Array<{
+    firstName: string;
+    lastName: string | null;
+    dateOfBirth: string | null;
+    age: number | null;
+  }>;
+  specialProvisions: string[];
+  extractionMetadata: {
+    confidenceScore: number;
+    warnings: string[];
+    fieldsExtracted: string[];
+    fieldsNotFound: string[];
+  };
+}
+
+// JSON Schema for structured extraction
+const extractionSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    childSupport: {
+      type: SchemaType.OBJECT,
+      description: 'Financial child support obligations including amount, currency, payment frequency, CPI linkage, and start date',
+      properties: {
+        amount: {
+          type: SchemaType.NUMBER,
+          description: 'Monthly child support amount in the specified currency',
+          nullable: true,
+        },
+        currency: {
+          type: SchemaType.STRING,
+          description: 'Currency code (ILS, USD, EUR, etc.)',
+        },
+        frequency: {
+          type: SchemaType.STRING,
+          enum: ['monthly', 'weekly', 'biweekly', 'annual'],
+          description: 'Payment frequency',
+        },
+        isCPILinked: {
+          type: SchemaType.BOOLEAN,
+          description: 'Whether payments are linked to consumer price index',
+        },
+        startDate: {
+          type: SchemaType.STRING,
+          description: 'Start date in ISO format (YYYY-MM-DD)',
+          nullable: true,
+        },
+        notes: {
+          type: SchemaType.STRING,
+          description: 'Additional notes about child support',
+          nullable: true,
+        },
+      },
+      required: ['currency', 'frequency', 'isCPILinked'],
+    },
+    expenseSplit: {
+      type: SchemaType.OBJECT,
+      description: 'How expenses are split between parents, with percentages for each parent',
+      properties: {
+        default: {
+          type: SchemaType.OBJECT,
+          description: 'Default expense split percentages',
+          properties: {
+            parent1: { type: SchemaType.NUMBER, description: 'Parent 1 percentage (0-100)' },
+            parent2: { type: SchemaType.NUMBER, description: 'Parent 2 percentage (0-100)' },
+          },
+          required: ['parent1', 'parent2'],
+        },
+        medical: {
+          type: SchemaType.OBJECT,
+          description: 'Medical expense split percentages',
+          properties: {
+            parent1: { type: SchemaType.NUMBER },
+            parent2: { type: SchemaType.NUMBER },
+          },
+          nullable: true,
+        },
+        education: {
+          type: SchemaType.OBJECT,
+          description: 'Education expense split percentages',
+          properties: {
+            parent1: { type: SchemaType.NUMBER },
+            parent2: { type: SchemaType.NUMBER },
+          },
+          nullable: true,
+        },
+        extracurricular: {
+          type: SchemaType.OBJECT,
+          description: 'Extracurricular activity expense split percentages',
+          properties: {
+            parent1: { type: SchemaType.NUMBER },
+            parent2: { type: SchemaType.NUMBER },
+          },
+          nullable: true,
+        },
+        notes: {
+          type: SchemaType.STRING,
+          description: 'Additional notes about expense splitting',
+          nullable: true,
+        },
+      },
+      required: ['default'],
+    },
+    custodySchedule: {
+      type: SchemaType.OBJECT,
+      description: 'Custody schedule including type, cycle duration, and which days each parent has custody',
+      properties: {
+        type: {
+          type: SchemaType.STRING,
+          enum: ['weekly', 'biweekly', 'custom'],
+          description: 'Schedule pattern type',
+        },
+        cycleDuration: {
+          type: SchemaType.NUMBER,
+          description: 'Duration of schedule cycle in days',
+        },
+        parent1Days: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Days of week parent 1 has custody (e.g., ["Monday", "Tuesday"])',
+        },
+        parent2Days: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Days of week parent 2 has custody',
+        },
+        description: {
+          type: SchemaType.STRING,
+          description: 'Human-readable description of the custody schedule',
+        },
+        transitionDetails: {
+          type: SchemaType.STRING,
+          description: 'Details about custody transitions (time, location, etc.)',
+          nullable: true,
+        },
+      },
+      required: ['type', 'cycleDuration', 'parent1Days', 'parent2Days', 'description'],
+    },
+    holidays: {
+      type: SchemaType.ARRAY,
+      description: 'Holiday custody arrangements',
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          name: {
+            type: SchemaType.STRING,
+            description: 'Holiday name',
+          },
+          year: {
+            type: SchemaType.NUMBER,
+            description: 'Specific year if mentioned',
+            nullable: true,
+          },
+          assignedTo: {
+            type: SchemaType.STRING,
+            enum: ['parent1', 'parent2', 'alternating'],
+            description: 'Which parent has custody for this holiday',
+          },
+          notes: {
+            type: SchemaType.STRING,
+            description: 'Additional details about holiday arrangement',
+            nullable: true,
+          },
+        },
+        required: ['name', 'assignedTo'],
+      },
+    },
+    children: {
+      type: SchemaType.ARRAY,
+      description: 'Information about children covered by this agreement',
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          firstName: {
+            type: SchemaType.STRING,
+            description: 'Child first name',
+          },
+          lastName: {
+            type: SchemaType.STRING,
+            description: 'Child last name',
+            nullable: true,
+          },
+          dateOfBirth: {
+            type: SchemaType.STRING,
+            description: 'Date of birth in ISO format (YYYY-MM-DD)',
+            nullable: true,
+          },
+          age: {
+            type: SchemaType.NUMBER,
+            description: 'Current age',
+            nullable: true,
+          },
+        },
+        required: ['firstName'],
+      },
+    },
+    specialProvisions: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+      description: 'Special provisions, restrictions, or requirements mentioned in the agreement',
+    },
+    extractionMetadata: {
+      type: SchemaType.OBJECT,
+      description: 'Metadata about the extraction quality and completeness',
+      properties: {
+        confidenceScore: {
+          type: SchemaType.NUMBER,
+          description: 'Overall confidence score 0-100 based on clarity of extracted information',
+        },
+        warnings: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'List of warnings about ambiguous or conflicting information',
+        },
+        fieldsExtracted: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'List of field names that were successfully extracted',
+        },
+        fieldsNotFound: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'List of field names that were not found in the document',
+        },
+      },
+      required: ['confidenceScore', 'warnings', 'fieldsExtracted', 'fieldsNotFound'],
+    },
+  },
+  required: ['childSupport', 'expenseSplit', 'custodySchedule', 'holidays', 'children', 'specialProvisions', 'extractionMetadata'],
+};
+
+
+/**
+ * Download file from URL (with robust error handling)
+ */
+async function downloadFile(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(url, (response) => {
+      // 1. Handle HTTP error codes
+      if (response.statusCode !== 200) {
+        // Must destroy the response to free up resources
+        response.destroy();
+        reject(new Error(`Failed to download file: ${response.statusCode} - URL: ${url}`));
+        return;
+      }
+
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => resolve(Buffer.concat(chunks)));
+
+      // 2. Handle stream errors (less critical, but good practice)
+      response.on('error', (err) => {
+        console.error('Download response stream error:', err);
+        reject(new Error(`Download stream error: ${err.message}`));
+      });
+    });
+
+    // 3. CRITICAL: Handle request-level network errors (DNS, timeout, connection reset)
+    req.on('error', (err) => {
+      console.error('Download request error:', err);
+      reject(new Error(`Download connection error: ${err.message}`));
+    });
+
+    // Set a timeout for the request, essential in cloud functions
+    req.setTimeout(60000, () => { // 60 second timeout
+      req.destroy();
+      reject(new Error('Download timeout exceeded (60 seconds)'));
+    });
+  });
+}
+
+/**
+ * Analyze divorce agreement document with Gemini using Files API
+ */
+export const analyzeAgreement = functions
+  .runWith({
+    secrets: ['GEMINI_API_KEY'],
+    timeoutSeconds: 300,
+    memory: '1GB'})
+  .https.onCall(async (data, context) => {
+  // Initialize Gemini API with secret
+  genAI = new GoogleGenerativeAI(geminiApiKey.value());
+
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { fileUrl, userId } = data;
+
+  if (!fileUrl || !userId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters: fileUrl and userId');
+  }
+
+  // Verify user is requesting their own document
+  if (context.auth.uid !== userId) {
+    throw new functions.https.HttpsError('permission-denied', 'User can only analyze their own documents');
+  }
+
+  // No file tracking needed with inline data
+  const startTime = Date.now();
+
+  try {
+    console.log(`Analyzing agreement for user: ${userId}`);
+
+    // Download the PDF file
+    const fileBuffer = await downloadFile(fileUrl);
+    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+    console.log(`Downloaded file: ${fileSizeMB.toFixed(2)} MB`);
+
+    // Check file size (50MB limit)
+    if (fileBuffer.length > 50 * 1024 * 1024) {
+      throw new functions.https.HttpsError('invalid-argument', 'File size exceeds 50MB limit');
+    }
+
+    // Initialize Gemini model with structured schema
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseSchema: extractionSchema as any,
+        responseMimeType: 'application/json',
+        temperature: 0.0, // Deterministic for extraction tasks
+      },
+    });
+
+    // System prompt for legal document analysis
+    const systemPrompt = `You are a legal document analysis AI specialized in divorce agreements and custody arrangements.
+Extract structured information from the provided document with high precision.
+
+CRITICAL EXTRACTION RULES:
+- Return ONLY a JSON object that strictly conforms to the provided schema
+- Be precise and conservative - if information is unclear or not found, use null rather than guessing
+- All monetary amounts must include their currency (ILS, USD, EUR, etc.)
+- All dates must be in ISO format (YYYY-MM-DD)
+- For expense splits, ensure Parent1 + Parent2 percentages equal 100
+- For percentages, use numbers 0-100 (e.g., 50 for 50%)
+- Support both Hebrew and English text
+- Calculate confidence score (0-100) and list warnings in extractionMetadata`;
+
+    const userPrompt = `Analyze the attached divorce/custody agreement document and extract all structured information according to the schema.`;
+
+    // Generate content using inline data (more reliable than Files API)
+    console.log('Sending to Gemini API with inline data...');
+    const result = await model.generateContent([
+      {
+        text: `${systemPrompt}\n\n${userPrompt}`,
+      },
+      {
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: fileBuffer.toString('base64'),
+        },
+      },
+    ]);
+
+    const response = result.response;
+    const text = response.text();
+    console.log('Received response from Gemini');
+
+    // Parse JSON response
+    let parsedData: AgreementData = JSON.parse(text);
+
+    // Log the actual response for debugging
+    console.log('Parsed data structure:', JSON.stringify(parsedData).substring(0, 500));
+
+    // No file cleanup needed with inline data
+
+    // Ensure extractionMetadata exists with defaults
+    if (!parsedData.extractionMetadata) {
+      console.warn('extractionMetadata missing, using defaults');
+      parsedData.extractionMetadata = {
+        confidenceScore: 70,
+        warnings: [],
+        fieldsExtracted: [],
+        fieldsNotFound: [],
+      };
+    }
+
+    const processingTimeMs = Date.now() - startTime;
+    console.log(`Analysis completed in ${processingTimeMs}ms`);
+
+    // Save to Firestore
+    await db.collection('agreements').doc(userId).set({
+      parsedData,
+      originalDocumentUrl: fileUrl,
+      analysisMetadata: {
+        analyzedAt: admin.firestore.FieldValue.serverTimestamp(),
+        geminiModel: 'gemini-2.5-flash',
+        confidenceScore: parsedData.extractionMetadata?.confidenceScore || 70,
+        processingTimeMs,
+      },
+      status: 'pending', // Will be 'verified' after user confirms
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    console.log('Saved to Firestore successfully');
+
+    // Return parsed data to client
+    return {
+      success: true,
+      data: parsedData,
+      processingTimeMs,
+    };
+  } catch (error: any) {
+    console.error('Error analyzing agreement:', error);
+    console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    console.error('Error breakdown:', {
+      message: error.message,
+      status: error.status,
+      statusText: error.statusText,
+      name: error.name,
+    });
+
+    // No file cleanup needed with inline data
+
+    // Log error to Firestore for debugging
+    await db.collection('analysis_errors').add({
+      userId,
+      fileUrl,
+      error: error.message,
+      errorName: error.name,
+      status: error.status,
+      statusText: error.statusText,
+      stack: error.stack,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Return user-friendly error based on error type
+    const errorMessage = error.message || '';
+    const errorName = error.name || '';
+
+    // File upload/processing errors
+    if (errorMessage.includes('File upload failed')) {
+      throw new functions.https.HttpsError('internal', 'Failed to upload document to processing service. Please try again.');
+    }
+
+    if (errorMessage.includes('File failed to process')) {
+      throw new functions.https.HttpsError('internal', 'Document failed to process. Please ensure it\'s a valid PDF and try again.');
+    }
+
+    if (errorMessage.includes('The document has no pages')) {
+      throw new functions.https.HttpsError('invalid-argument', 'The uploaded document appears to be empty or corrupted. Please check the file and try again.');
+    }
+
+    // API key and authentication errors
+    if (errorMessage.includes('API key') || error.status === 401 || error.status === 403) {
+      throw new functions.https.HttpsError('internal', 'Authentication error with document analysis service. Please contact support.');
+    }
+
+    // Quota/rate limit errors
+    if (errorMessage.includes('quota') || errorMessage.includes('rate limit') || error.status === 429) {
+      throw new functions.https.HttpsError('resource-exhausted', 'Too many requests. Please wait a moment and try again.');
+    }
+
+    // Timeout errors
+    if (errorMessage.includes('timeout') || error.status === 408 || error.status === 504) {
+      throw new functions.https.HttpsError('deadline-exceeded', 'Analysis is taking too long. Please try with a smaller document or try again later.');
+    }
+    // Model not found errors
+    if (errorMessage.includes('not found') && errorMessage.includes('model')) {
+
+      throw new functions.https.HttpsError('internal', 'Document analysis model unavailable. Please contact support.');
+    }
+
+    // File download errors
+    if (errorMessage.includes('Failed to download file')) {
+      throw new functions.https.HttpsError('invalid-argument', 'Unable to access the document. Please ensure the file exists and try again.');
+    }
+
+    // JSON parsing errors
+    if (errorName === 'SyntaxError' && errorMessage.includes('JSON')) {
+      throw new functions.https.HttpsError('internal', 'Failed to parse analysis results. Please try again.');
+    }
+
+    // Generic bad request
+    if (error.status === 400) {
+      throw new functions.https.HttpsError('invalid-argument', `Invalid request: ${errorMessage.split(':').pop() || 'Please check your document and try again.'}`);
+    }
+
+    // Default error
+    throw new functions.https.HttpsError(
+      'internal',
+      'An unexpected error occurred while analyzing your document. Please try again or contact support if the problem persists.'
+    );
+  }
+});
