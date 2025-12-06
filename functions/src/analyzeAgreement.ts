@@ -1,9 +1,11 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as https from 'https';
 import * as http from 'http';
 import { defineSecret } from 'firebase-functions/params';
+import { agreementDataSchema } from '../../schemas';
+import { extractionSchemaGemini } from '../../schemas';
 
 const db = admin.firestore();
 
@@ -12,267 +14,6 @@ const geminiApiKey = defineSecret('GEMINI_API_KEY');
 
 // Initialize Gemini API (will be done inside function with secret access)
 let genAI: GoogleGenerativeAI;
-
-// TypeScript interfaces for structured output
-interface AgreementData {
-  childSupport: {
-    amount: number | null;
-    currency: string;
-    frequency: 'monthly' | 'weekly' | 'biweekly' | 'annual';
-    isCPILinked: boolean;
-    startDate: string | null;
-    notes: string | null;
-  };
-  expenseSplit: {
-    default: { parent1: number; parent2: number };
-    medical?: { parent1: number; parent2: number };
-    education?: { parent1: number; parent2: number };
-    extracurricular?: { parent1: number; parent2: number };
-    notes: string | null;
-  };
-  custodySchedule: {
-    type: 'weekly' | 'biweekly' | 'custom';
-    cycleDuration: number;
-    parent1Days: string[];
-    parent2Days: string[];
-    description: string;
-    transitionDetails: string | null;
-  };
-  holidays: Array<{
-    name: string;
-    year: number | null;
-    assignedTo: 'parent1' | 'parent2' | 'alternating';
-    notes: string | null;
-  }>;
-  children: Array<{
-    firstName: string;
-    lastName: string | null;
-    dateOfBirth: string | null;
-    age: number | null;
-  }>;
-  specialProvisions: string[];
-  extractionMetadata: {
-    confidenceScore: number;
-    warnings: string[];
-    fieldsExtracted: string[];
-    fieldsNotFound: string[];
-  };
-}
-
-// JSON Schema for structured extraction
-const extractionSchema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    childSupport: {
-      type: SchemaType.OBJECT,
-      description: 'Financial child support obligations including amount, currency, payment frequency, CPI linkage, and start date',
-      properties: {
-        amount: {
-          type: SchemaType.NUMBER,
-          description: 'Monthly child support amount in the specified currency',
-          nullable: true,
-        },
-        currency: {
-          type: SchemaType.STRING,
-          description: 'Currency code (ILS, USD, EUR, etc.)',
-        },
-        frequency: {
-          type: SchemaType.STRING,
-          enum: ['monthly', 'weekly', 'biweekly', 'annual'],
-          description: 'Payment frequency',
-        },
-        isCPILinked: {
-          type: SchemaType.BOOLEAN,
-          description: 'Whether payments are linked to consumer price index',
-        },
-        startDate: {
-          type: SchemaType.STRING,
-          description: 'Start date in ISO format (YYYY-MM-DD)',
-          nullable: true,
-        },
-        notes: {
-          type: SchemaType.STRING,
-          description: 'Additional notes about child support',
-          nullable: true,
-        },
-      },
-      required: ['currency', 'frequency', 'isCPILinked'],
-    },
-    expenseSplit: {
-      type: SchemaType.OBJECT,
-      description: 'How expenses are split between parents, with percentages for each parent',
-      properties: {
-        default: {
-          type: SchemaType.OBJECT,
-          description: 'Default expense split percentages',
-          properties: {
-            parent1: { type: SchemaType.NUMBER, description: 'Parent 1 percentage (0-100)' },
-            parent2: { type: SchemaType.NUMBER, description: 'Parent 2 percentage (0-100)' },
-          },
-          required: ['parent1', 'parent2'],
-        },
-        medical: {
-          type: SchemaType.OBJECT,
-          description: 'Medical expense split percentages',
-          properties: {
-            parent1: { type: SchemaType.NUMBER },
-            parent2: { type: SchemaType.NUMBER },
-          },
-          nullable: true,
-        },
-        education: {
-          type: SchemaType.OBJECT,
-          description: 'Education expense split percentages',
-          properties: {
-            parent1: { type: SchemaType.NUMBER },
-            parent2: { type: SchemaType.NUMBER },
-          },
-          nullable: true,
-        },
-        extracurricular: {
-          type: SchemaType.OBJECT,
-          description: 'Extracurricular activity expense split percentages',
-          properties: {
-            parent1: { type: SchemaType.NUMBER },
-            parent2: { type: SchemaType.NUMBER },
-          },
-          nullable: true,
-        },
-        notes: {
-          type: SchemaType.STRING,
-          description: 'Additional notes about expense splitting',
-          nullable: true,
-        },
-      },
-      required: ['default'],
-    },
-    custodySchedule: {
-      type: SchemaType.OBJECT,
-      description: 'Custody schedule including type, cycle duration, and which days each parent has custody',
-      properties: {
-        type: {
-          type: SchemaType.STRING,
-          enum: ['weekly', 'biweekly', 'custom'],
-          description: 'Schedule pattern type',
-        },
-        cycleDuration: {
-          type: SchemaType.NUMBER,
-          description: 'Duration of schedule cycle in days',
-        },
-        parent1Days: {
-          type: SchemaType.ARRAY,
-          items: { type: SchemaType.STRING },
-          description: 'Days of week parent 1 has custody (e.g., ["Monday", "Tuesday"])',
-        },
-        parent2Days: {
-          type: SchemaType.ARRAY,
-          items: { type: SchemaType.STRING },
-          description: 'Days of week parent 2 has custody',
-        },
-        description: {
-          type: SchemaType.STRING,
-          description: 'Human-readable description of the custody schedule',
-        },
-        transitionDetails: {
-          type: SchemaType.STRING,
-          description: 'Details about custody transitions (time, location, etc.)',
-          nullable: true,
-        },
-      },
-      required: ['type', 'cycleDuration', 'parent1Days', 'parent2Days', 'description'],
-    },
-    holidays: {
-      type: SchemaType.ARRAY,
-      description: 'Holiday custody arrangements',
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          name: {
-            type: SchemaType.STRING,
-            description: 'Holiday name',
-          },
-          year: {
-            type: SchemaType.NUMBER,
-            description: 'Specific year if mentioned',
-            nullable: true,
-          },
-          assignedTo: {
-            type: SchemaType.STRING,
-            enum: ['parent1', 'parent2', 'alternating'],
-            description: 'Which parent has custody for this holiday',
-          },
-          notes: {
-            type: SchemaType.STRING,
-            description: 'Additional details about holiday arrangement',
-            nullable: true,
-          },
-        },
-        required: ['name', 'assignedTo'],
-      },
-    },
-    children: {
-      type: SchemaType.ARRAY,
-      description: 'Information about children covered by this agreement',
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          firstName: {
-            type: SchemaType.STRING,
-            description: 'Child first name',
-          },
-          lastName: {
-            type: SchemaType.STRING,
-            description: 'Child last name',
-            nullable: true,
-          },
-          dateOfBirth: {
-            type: SchemaType.STRING,
-            description: 'Date of birth in ISO format (YYYY-MM-DD)',
-            nullable: true,
-          },
-          age: {
-            type: SchemaType.NUMBER,
-            description: 'Current age',
-            nullable: true,
-          },
-        },
-        required: ['firstName'],
-      },
-    },
-    specialProvisions: {
-      type: SchemaType.ARRAY,
-      items: { type: SchemaType.STRING },
-      description: 'Special provisions, restrictions, or requirements mentioned in the agreement',
-    },
-    extractionMetadata: {
-      type: SchemaType.OBJECT,
-      description: 'Metadata about the extraction quality and completeness',
-      properties: {
-        confidenceScore: {
-          type: SchemaType.NUMBER,
-          description: 'Overall confidence score 0-100 based on clarity of extracted information',
-        },
-        warnings: {
-          type: SchemaType.ARRAY,
-          items: { type: SchemaType.STRING },
-          description: 'List of warnings about ambiguous or conflicting information',
-        },
-        fieldsExtracted: {
-          type: SchemaType.ARRAY,
-          items: { type: SchemaType.STRING },
-          description: 'List of field names that were successfully extracted',
-        },
-        fieldsNotFound: {
-          type: SchemaType.ARRAY,
-          items: { type: SchemaType.STRING },
-          description: 'List of field names that were not found in the document',
-        },
-      },
-      required: ['confidenceScore', 'warnings', 'fieldsExtracted', 'fieldsNotFound'],
-    },
-  },
-  required: ['childSupport', 'expenseSplit', 'custodySchedule', 'holidays', 'children', 'specialProvisions', 'extractionMetadata'],
-};
 
 
 /**
@@ -348,22 +89,41 @@ export const analyzeAgreement = functions
 
   try {
     console.log(`Analyzing agreement for user: ${userId}`);
+    console.log(`File URL: ${fileUrl}`);
 
     // Download the PDF file
     const fileBuffer = await downloadFile(fileUrl);
+
+    if (fileBuffer.length === 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'The downloaded file is empty (zero bytes). Please check the file URL and contents.');
+    }
+
+
     const fileSizeMB = fileBuffer.length / (1024 * 1024);
     console.log(`Downloaded file: ${fileSizeMB.toFixed(2)} MB`);
 
-    // Check file size (50MB limit)
+    // Check file size
+    if (fileBuffer.length === 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'Downloaded file is empty');
+    }
+
     if (fileBuffer.length > 50 * 1024 * 1024) {
       throw new functions.https.HttpsError('invalid-argument', 'File size exceeds 50MB limit');
     }
+
+    // Validate PDF header (should start with %PDF)
+    const pdfHeader = fileBuffer.slice(0, 5).toString('ascii');
+    if (!pdfHeader.startsWith('%PDF')) {
+      console.error(`Invalid PDF header: ${pdfHeader}`);
+      throw new functions.https.HttpsError('invalid-argument', 'File is not a valid PDF document');
+    }
+    console.log(`Valid PDF header detected: ${pdfHeader}`);
 
     // Initialize Gemini model with structured schema
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: {
-        responseSchema: extractionSchema as any,
+        responseSchema: extractionSchemaGemini as any,
         responseMimeType: 'application/json',
         temperature: 0.0, // Deterministic for extraction tasks
       },
@@ -404,7 +164,10 @@ CRITICAL EXTRACTION RULES:
     console.log('Received response from Gemini');
 
     // Parse JSON response
-    let parsedData: AgreementData = JSON.parse(text);
+    const jsonData = JSON.parse(text);
+
+    // Validate with Zod schema
+    const parsedData = agreementDataSchema.parse(jsonData);
 
     // Log the actual response for debugging
     console.log('Parsed data structure:', JSON.stringify(parsedData).substring(0, 500));

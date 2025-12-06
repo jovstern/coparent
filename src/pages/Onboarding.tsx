@@ -95,7 +95,6 @@ export default function Onboarding() {
         userId: user?.uid,
       });
     } catch (error) {
-      debugger
       console.error('Analysis error:', error);
       throw new Error('Failed to analyze document. Please try again.');
     }
