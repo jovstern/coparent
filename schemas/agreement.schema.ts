@@ -56,6 +56,7 @@ export const extractionMetadataSchema = z.object({
   warnings: z.array(z.string()).describe('List of warnings about ambiguous or conflicting information'),
   fieldsExtracted: z.array(z.string()).describe('List of field names that were successfully extracted'),
   fieldsNotFound: z.array(z.string()).describe('List of field names that were not found in the document'),
+  documentLanguage: z.enum(['hebrew', 'english', 'mixed']).describe('Primary language of the document'),
 }).describe('Metadata about the extraction quality and completeness');
 
 // Main Agreement Data Schema

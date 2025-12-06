@@ -20,7 +20,11 @@ export const agreementAnalyzerSystemPrompt = `You are a **Senior Legal Document 
 
 **PRIORITY 3: METADATA & QUALITY**
 1.  **Confidence Score:** Calculate an overall **confidence score (0-100)** reflecting the clarity and completeness of the extracted information. Lower score for documents with vague language or missing core sections.
-2.  **Metadata:** Populate the **extractionMetadata** field completely, especially the "warnings" (for contradictions or ambiguities) and the lists of "fieldsExtracted" and "fieldsNotFound".`;
+2.  **Document Language:** Identify the primary language of the document. Set **documentLanguage** to:
+    - **"hebrew"** if the document is primarily in Hebrew
+    - **"english"** if the document is primarily in English
+    - **"mixed"** if the document contains substantial content in both languages
+3.  **Metadata:** Populate the **extractionMetadata** field completely, especially the "warnings" (for contradictions or ambiguities) and the lists of "fieldsExtracted" and "fieldsNotFound".`;
 
 export const agreementAnalyzerUserPrompt = `Please analyze the attached PDF document, which is a formal divorce and/or custody agreement.
 

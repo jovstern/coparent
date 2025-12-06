@@ -170,7 +170,12 @@ export const analyzeAgreement = functions
         warnings: [],
         fieldsExtracted: [],
         fieldsNotFound: [],
+        documentLanguage: 'mixed',
       };
+    } else if (!parsedData.extractionMetadata.documentLanguage) {
+      // Add documentLanguage if missing (for backward compatibility)
+      console.warn('documentLanguage missing in extractionMetadata, defaulting to "mixed"');
+      parsedData.extractionMetadata.documentLanguage = 'mixed';
     }
 
     const processingTimeMs = Date.now() - startTime;
