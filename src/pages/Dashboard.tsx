@@ -133,7 +133,7 @@ export default function Dashboard() {
       </main>
 
       {/* Invite Modal */}
-      {showInviteModal && <InviteCoParentModal onClose={() => setShowInviteModal(false)} />}
+      <InviteCoParentModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
     </div>
   );
 }

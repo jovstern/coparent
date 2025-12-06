@@ -5,6 +5,9 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+// Export new Gemini-powered analysis function
+export { analyzeAgreement } from './analyzeAgreement';
+
 /**
  * Cloud Function to parse uploaded PDF/DOCX agreement
  * Triggered when a document is uploaded to Firebase Storage

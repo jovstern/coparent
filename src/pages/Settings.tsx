@@ -22,7 +22,6 @@ export default function Settings() {
         </div>
 
         <div className="max-w-4xl">
-          <h1 className="text-3xl font-bold text-zinc-800 mb-8">Settings</h1>
 
           <div className="space-y-6">
             {/* Account Section */}

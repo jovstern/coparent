@@ -3,6 +3,16 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, RefreshCw, Downloa
 import Navigation from '../components/Navigation';
 import BackButton from '../components/BackButton';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   format,
   startOfMonth,
   endOfMonth,
@@ -72,7 +82,6 @@ export default function Calendar() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
             <BackButton />
-            <h2 className="text-2xl font-bold text-primary-600">Calendar</h2>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -210,27 +219,26 @@ export default function Calendar() {
       </main>
 
       {/* Swap Request Modal */}
-      {showSwapModal && selectedDay && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="flex items-center gap-3 mb-4">
+      <AlertDialog open={showSwapModal} onOpenChange={setShowSwapModal}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
               <RefreshCw className="w-6 h-6 text-primary-600" />
-              <h3 className="text-xl font-semibold text-zinc-800">Request Schedule Swap</h3>
+              <AlertDialogTitle>Request Schedule Swap</AlertDialogTitle>
             </div>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 pt-2">
+                <p className="text-zinc-600">
+                  Request to swap custody for{' '}
+                  <span className="font-semibold">{selectedDay && format(selectedDay, 'MMMM d, yyyy')}</span>
+                </p>
 
-            <div className="mb-6">
-              <p className="text-zinc-600 mb-4">
-                Request to swap custody for{' '}
-                <span className="font-semibold">{format(selectedDay, 'MMMM d, yyyy')}</span>
-              </p>
-
-              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-2">
                     Current Assignment
                   </label>
                   <div className="p-3 bg-zinc-50 rounded-md">
-                    <p className="text-zinc-800">{getDaySchedule(selectedDay)?.parentName || 'Not assigned'}</p>
+                    <p className="text-zinc-800">{selectedDay && (getDaySchedule(selectedDay)?.parentName || 'Not assigned')}</p>
                   </div>
                 </div>
 
@@ -246,101 +254,84 @@ export default function Calendar() {
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSwapModal(false)}
-                className="flex-1 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-md hover:bg-zinc-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSwapRequest}
-                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
-              >
-                Send Request
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSwapRequest}>Send Request</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Google Calendar Sync Modal */}
-      {showGoogleCalendarModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="flex items-center gap-3 mb-4">
+      <AlertDialog open={showGoogleCalendarModal} onOpenChange={setShowGoogleCalendarModal}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
               <Download className="w-6 h-6 text-primary-600" />
-              <h3 className="text-xl font-semibold text-zinc-800">Sync with Google Calendar</h3>
+              <AlertDialogTitle>Sync with Google Calendar</AlertDialogTitle>
             </div>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 pt-2">
+                <p className="text-zinc-600">
+                  Keep your custody schedule in sync with Google Calendar. Your schedule will automatically
+                  update when changes are made.
+                </p>
 
-            <div className="mb-6">
-              <p className="text-zinc-600 mb-4">
-                Keep your custody schedule in sync with Google Calendar. Your schedule will automatically
-                update when changes are made.
-              </p>
-
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
-                  <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-white text-xs">✓</span>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
+                    <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-xs">✓</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-800">Two-way sync</p>
+                      <p className="text-xs text-zinc-600">Changes in either calendar will sync automatically</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-800">Two-way sync</p>
-                    <p className="text-xs text-zinc-600">Changes in either calendar will sync automatically</p>
+
+                  <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
+                    <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-xs">✓</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-800">Reminders included</p>
+                      <p className="text-xs text-zinc-600">Get notifications before pickup/dropoff times</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
+                    <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-xs">✓</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-800">Private & secure</p>
+                      <p className="text-xs text-zinc-600">Only you can see your synced events</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
-                  <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-white text-xs">✓</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-800">Reminders included</p>
-                    <p className="text-xs text-zinc-600">Get notifications before pickup/dropoff times</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 bg-secondary-50 rounded-lg">
-                  <div className="w-5 h-5 rounded-full bg-secondary-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-white text-xs">✓</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-800">Private & secure</p>
-                    <p className="text-xs text-zinc-600">Only you can see your synced events</p>
-                  </div>
+                <div className="p-3 bg-alert-50 border border-alert-200 rounded-lg">
+                  <p className="text-sm text-alert-800">
+                    📱 You'll be redirected to Google to authorize calendar access
+                  </p>
                 </div>
               </div>
-            </div>
-
-            <div className="p-3 bg-alert-50 border border-alert-200 rounded-lg mb-6">
-              <p className="text-sm text-alert-800">
-                📱 You'll be redirected to Google to authorize calendar access
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowGoogleCalendarModal(false)}
-                className="flex-1 px-4 py-2 border border-zinc-300 text-zinc-700 rounded-md hover:bg-zinc-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  // TODO: Implement Google Calendar OAuth flow
-                  alert('Google Calendar integration coming soon!');
-                  setShowGoogleCalendarModal(false);
-                }}
-                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
-              >
-                Connect Google
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                // TODO: Implement Google Calendar OAuth flow
+                alert('Google Calendar integration coming soon!');
+                setShowGoogleCalendarModal(false);
+              }}
+            >
+              Connect Google
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

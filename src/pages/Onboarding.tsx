@@ -2,23 +2,17 @@ import { useState } from 'react';
 import { Upload, FileText, CheckCircle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { storage, db, functions } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 
-type OnboardingStep = 'upload' | 'analyzing' | 'verification';
-
-interface ParsedData {
-  childSupport?: string;
-  expenseSplit?: string;
-  custodySchedule?: string;
-  holidays?: string[];
-}
+type OnboardingStep = 'upload' | 'analyzing';
 
 export default function Onboarding() {
   const [step, setStep] = useState<OnboardingStep>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const { user } = useAuth();
@@ -71,13 +65,18 @@ export default function Onboarding() {
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
 
-      // Analyze with Gemini AI
+      // Analyze with Gemini AI (saves to Firestore automatically)
       setAnalyzing(true);
-      const analyzed = await analyzeDocument(downloadURL);
-      setParsedData(analyzed);
-
+      await analyzeDocument(downloadURL);
       setAnalyzing(false);
-      setStep('verification');
+
+      // Mark onboarding as complete
+      await updateDoc(doc(db, 'users', user.uid), {
+        hasCompletedOnboarding: true,
+      });
+
+      // Navigate to dashboard
+      navigate('/dashboard');
     } catch (error) {
       console.error('Upload failed:', error);
       alert('Failed to upload and analyze document');
@@ -87,22 +86,19 @@ export default function Onboarding() {
     }
   };
 
-  const analyzeDocument = async (_fileUrl: string): Promise<ParsedData> => {
-    // TODO: Implement actual Gemini API call with _fileUrl
-    // For now, return mock data
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    return {
-      childSupport: '2,000₪ (CPI Linked)',
-      expenseSplit: '50/50',
-      custodySchedule: 'Weekly alternating',
-      holidays: ['Passover', 'Rosh Hashanah', 'Hanukkah'],
-    };
-  };
-
-  const handleConfirm = () => {
-    // TODO: Save agreement data to Firestore
-    navigate('/dashboard');
+  const analyzeDocument = async (fileUrl: string): Promise<void> => {
+    try {
+      // Call the Cloud Function (saves to Firestore automatically)
+      const analyzeAgreement = httpsCallable(functions, 'analyzeAgreement');
+      await analyzeAgreement({
+        fileUrl,
+        userId: user?.uid,
+      });
+    } catch (error) {
+      debugger
+      console.error('Analysis error:', error);
+      throw new Error('Failed to analyze document. Please try again.');
+    }
   };
 
   return (
@@ -130,20 +126,11 @@ export default function Onboarding() {
 
             <div className="w-16 h-0.5 bg-zinc-300" />
 
-            <div className={`flex items-center gap-2 ${step === 'analyzing' ? 'text-primary-600' : step === 'verification' ? 'text-secondary-600' : 'text-zinc-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === 'analyzing' ? 'bg-primary-100' : step === 'verification' ? 'bg-secondary-100' : 'bg-zinc-100'}`}>
-                {step === 'verification' ? <CheckCircle className="w-5 h-5" /> : '2'}
+            <div className={`flex items-center gap-2 ${step === 'analyzing' ? 'text-primary-600' : 'text-zinc-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === 'analyzing' ? 'bg-primary-100' : 'bg-zinc-100'}`}>
+                {analyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : '2'}
               </div>
               <span className="font-medium">Analyze</span>
-            </div>
-
-            <div className="w-16 h-0.5 bg-zinc-300" />
-
-            <div className={`flex items-center gap-2 ${step === 'verification' ? 'text-primary-600' : 'text-zinc-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === 'verification' ? 'bg-primary-100' : 'bg-zinc-100'}`}>
-                3
-              </div>
-              <span className="font-medium">Verify</span>
             </div>
           </div>
         </div>
@@ -238,68 +225,6 @@ export default function Onboarding() {
                   <span>Finding holiday schedules</span>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {step === 'verification' && parsedData && (
-          <div className="bg-white rounded-lg shadow-md p-8">
-            <h2 className="text-2xl font-semibold text-zinc-800 mb-6">Verify Extracted Information</h2>
-            <p className="text-zinc-600 mb-8">Please review and confirm the details we found</p>
-
-            <div className="space-y-6">
-              <div className="p-4 bg-zinc-50 rounded-lg">
-                <label className="block text-sm font-medium text-zinc-700 mb-2">Child Support</label>
-                <input
-                  type="text"
-                  defaultValue={parsedData.childSupport}
-                  className="w-full px-4 py-2 border border-zinc-300 rounded-md focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              <div className="p-4 bg-zinc-50 rounded-lg">
-                <label className="block text-sm font-medium text-zinc-700 mb-2">Expense Split</label>
-                <input
-                  type="text"
-                  defaultValue={parsedData.expenseSplit}
-                  className="w-full px-4 py-2 border border-zinc-300 rounded-md focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              <div className="p-4 bg-zinc-50 rounded-lg">
-                <label className="block text-sm font-medium text-zinc-700 mb-2">Custody Schedule</label>
-                <input
-                  type="text"
-                  defaultValue={parsedData.custodySchedule}
-                  className="w-full px-4 py-2 border border-zinc-300 rounded-md focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              <div className="p-4 bg-zinc-50 rounded-lg">
-                <label className="block text-sm font-medium text-zinc-700 mb-2">Holiday Schedule</label>
-                <div className="flex flex-wrap gap-2">
-                  {parsedData.holidays?.map((holiday, idx) => (
-                    <span key={idx} className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm">
-                      {holiday}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 flex gap-4">
-              <button
-                onClick={() => setStep('upload')}
-                className="flex-1 py-3 border border-zinc-300 text-zinc-700 rounded-md hover:bg-zinc-50 transition-colors"
-              >
-                Re-upload
-              </button>
-              <button
-                onClick={handleConfirm}
-                className="flex-1 py-3 bg-secondary-500 text-white rounded-md hover:bg-secondary-600 transition-colors"
-              >
-                Confirm & Continue
-              </button>
             </div>
           </div>
         )}

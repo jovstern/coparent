@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -17,8 +19,17 @@ export default function SignIn() {
     setLoading(true);
 
     try {
-      await signIn(email, password);
-      navigate('/dashboard');
+      const userCredential = await signIn(email, password);
+
+      // Check if user needs onboarding
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      const userData = userDoc.data();
+
+      if (userData?.hasCompletedOnboarding === false) {
+        navigate('/onboarding');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
     } finally {
@@ -32,7 +43,19 @@ export default function SignIn() {
 
     try {
       await signInWithGoogle();
-      navigate('/dashboard');
+
+      // Wait for user document to be created/fetched
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        const userData = userDoc.data();
+
+        if (userData?.hasCompletedOnboarding === false) {
+          navigate('/onboarding');
+        } else {
+          navigate('/dashboard');
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in with Google');
     } finally {

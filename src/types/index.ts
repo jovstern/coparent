@@ -7,7 +7,8 @@ export interface User {
   displayName: string;
   photoURL?: string;
   role: 'admin' | 'parent';
-  agreementId: string;
+  agreementId?: string; // Optional until onboarding is complete
+  hasCompletedOnboarding?: boolean;
   createdAt: Timestamp;
   lastLogin: Timestamp;
 }

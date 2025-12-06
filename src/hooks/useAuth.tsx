@@ -7,15 +7,17 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
+  updateProfile,
 } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { User } from '../types';
 
 interface AuthContextType {
   user: FirebaseUser | null;
   userData: User | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -33,9 +35,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
-        // TODO: Fetch user data from Firestore
-        // const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        // setUserData(userDoc.data() as User);
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUserData(userDoc.data() as User);
+
+            // Update last login
+            await updateDoc(doc(db, 'users', firebaseUser.uid), {
+              lastLogin: serverTimestamp(),
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+        }
       } else {
         setUserData(null);
       }
@@ -47,26 +59,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    return await signInWithEmailAndPassword(auth, email, password);
   };
 
-  const signUp = async (email: string, password: string, _displayName: string) => {
-    await createUserWithEmailAndPassword(auth, email, password);
+  const signUp = async (email: string, password: string, displayName: string) => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
 
-    // TODO: Create user document in Firestore
-    // await setDoc(doc(db, 'users', user.uid), {
-    //   id: user.uid,
-    //   email,
-    //   displayName: _displayName,
-    //   role: 'admin',
-    //   createdAt: serverTimestamp(),
-    //   lastLogin: serverTimestamp(),
-    // });
+    // Update Firebase Auth profile
+    await updateProfile(user, { displayName });
+
+    // Create user document in Firestore
+    await setDoc(doc(db, 'users', user.uid), {
+      id: user.uid,
+      email,
+      displayName,
+      role: 'admin',
+      hasCompletedOnboarding: false,
+      createdAt: serverTimestamp(),
+      lastLogin: serverTimestamp(),
+    });
   };
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+    const userCredential = await signInWithPopup(auth, provider);
+    const user = userCredential.user;
+
+    // Check if user document exists, create if it doesn't
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (!userDoc.exists()) {
+      await setDoc(doc(db, 'users', user.uid), {
+        id: user.uid,
+        email: user.email,
+        displayName: user.displayName || '',
+        role: 'admin',
+        hasCompletedOnboarding: false,
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+      });
+    }
   };
 
   const logout = async () => {
